@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import xml.etree.ElementTree as ET
 
-# ---- Weights (adjusted)
+# ---- Weights (adjusted and normalized)
 weights = {
     "artwork": 0.05,
     "gameplay": 0.20,
@@ -49,7 +49,6 @@ def get_game_details(game_id):
     return {}
 
 # ---- Streamlit UI
-st.set_page_config(page_title="Board Game Rater", layout="centered")
 st.title("🎲 Rate a Board Game")
 
 # Search input
@@ -69,15 +68,14 @@ if search_query:
     else:
         st.warning("No games found!")
 
-# Manual fallback input
+# Manual fallback
 if not game_info.get("name"):
-    manual_name = st.text_input("Or enter a game name manually:")
-    if manual_name:
-        game_info["name"] = manual_name
+    game_info["name"] = st.text_input("Or enter a game name manually:")
 
+# Solo game checkbox
 is_solo = st.checkbox("Is this a solo-only game?", value=False)
 
-# Adjust weights if solo game
+# Adjust weights if solo
 adjusted_weights = weights.copy()
 if is_solo:
     adjusted_weights.pop("interactivity", None)
@@ -90,7 +88,7 @@ adjusted_weights = {k: v / total_weight for k, v in adjusted_weights.items()}
 if game_info.get("thumbnail"):
     st.image(game_info["thumbnail"], width=200, caption=game_info["name"])
 
-# Ratings input
+# Rating form
 ratings = {}
 with st.form("rate_game"):
     st.subheader("📋 Rate Each Category (1–10)")
@@ -98,7 +96,7 @@ with st.form("rate_game"):
         ratings[cat] = st.slider(cat.replace("_", " ").title(), 1.0, 10.0, 7.0, 0.5)
     submitted = st.form_submit_button("🎯 Get Overall Rating")
 
-# Output final rating
+# Display result
 if submitted:
     game_name = game_info.get("name", "").strip()
     if not game_name:
