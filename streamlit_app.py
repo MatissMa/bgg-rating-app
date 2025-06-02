@@ -49,6 +49,7 @@ def get_game_details(game_id):
     return {}
 
 # ---- Streamlit UI
+st.set_page_config(page_title="Board Game Rater", layout="centered")
 st.title("🎲 Rate a Board Game")
 
 # Search input
@@ -68,26 +69,30 @@ if search_query:
     else:
         st.warning("No games found!")
 
-# Manual fallback
-if not game_info:
-    game_info["name"] = st.text_input("Or enter a game name manually:")
+# Manual fallback input
+if not game_info.get("name"):
+    manual_name = st.text_input("Or enter a game name manually:")
+    if manual_name:
+        game_info["name"] = manual_name
+    else:
+        game_info["name"] = "Unnamed Game"
 
 is_solo = st.checkbox("Is this a solo-only game?", value=False)
 
-# Adjust weights
+# Adjust weights if solo game
 adjusted_weights = weights.copy()
 if is_solo:
-    adjusted_weights.pop("interactivity")
+    adjusted_weights.pop("interactivity", None)
 
-# Normalize
+# Normalize weights
 total_weight = sum(adjusted_weights.values())
 adjusted_weights = {k: v / total_weight for k, v in adjusted_weights.items()}
 
-# Show thumbnail
+# Show image if available
 if game_info.get("thumbnail"):
     st.image(game_info["thumbnail"], width=200, caption=game_info["name"])
 
-# Ratings form
+# Ratings input
 ratings = {}
 with st.form("rate_game"):
     st.subheader("📋 Rate Each Category (1–10)")
@@ -95,6 +100,7 @@ with st.form("rate_game"):
         ratings[cat] = st.slider(cat.replace("_", " ").title(), 1.0, 10.0, 7.0, 0.5)
     submitted = st.form_submit_button("🎯 Get Overall Rating")
 
+# Output final rating
 if submitted and game_info.get("name"):
     weighted_total = sum(ratings[cat] * adjusted_weights[cat] for cat in ratings)
     final_score = round_half(weighted_total)
@@ -105,5 +111,5 @@ if submitted and game_info.get("name"):
     st.table({
         "Category": [cat.replace("_", " ").title() for cat in ratings],
         "Rating": [ratings[cat] for cat in ratings],
-        "Weight": [adjusted_weights[cat] for cat in ratings]
+        "Weight": [round(adjusted_weights[cat], 3) for cat in ratings]
     })
