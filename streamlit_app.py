@@ -43,13 +43,17 @@ def get_game_details(game_id):
     root = ET.fromstring(response.content)
     item = root.find('item')
     if item is not None:
+        def get_val(xpath):
+            el = item.find(xpath)
+            return el.text if el is not None else None
+
         details = {
-            "name": item.find("name").attrib['value'],
-            "thumbnail": item.find("thumbnail").text if item.find("thumbnail") is not None else None,
-            "minplayers": item.find("minplayers").attrib['value'],
-            "maxplayers": item.find("maxplayers").attrib['value'],
-            "playingtime": item.find("playingtime").attrib['value'],
-            "average": item.find("statistics/ratings/average").text,
+            "name": item.find("name").attrib.get('value', '') if item.find("name") is not None else '',
+            "thumbnail": get_val("thumbnail"),
+            "minplayers": item.find("minplayers").attrib.get('value', '') if item.find("minplayers") is not None else '',
+            "maxplayers": item.find("maxplayers").attrib.get('value', '') if item.find("maxplayers") is not None else '',
+            "playingtime": get_val("playingtime"),
+            "average": get_val("statistics/ratings/average"),
             "id": game_id
         }
         return details
@@ -96,14 +100,22 @@ if is_solo:
 total_weight = sum(adjusted_weights.values())
 adjusted_weights = {k: v / total_weight for k, v in adjusted_weights.items()}
 
-# Show BGG image/info
-if game_info.get("thumbnail"):
-    st.image(game_info["thumbnail"], width=200, caption=game_info["name"])
-if game_info.get("playingtime"):
-    st.markdown(f"⏱️ Play time: {game_info['playingtime']} min | 👥 Players: {game_info['minplayers']}–{game_info['maxplayers']}")
-avg = game_info.get("average")
-if avg and avg.replace('.', '', 1).isdigit():
-    st.markdown(f"📊 BGG Avg Rating: {round(float(avg), 2)}")
+# Show BGG image/info if available
+if "thumbnail" in game_info and game_info["thumbnail"]:
+    st.image(game_info["thumbnail"], width=200, caption=game_info.get("name", "Unknown Game"))
+
+if all(k in game_info for k in ["playingtime", "minplayers", "maxplayers"]):
+    if game_info["playingtime"] and game_info["minplayers"] and game_info["maxplayers"]:
+        st.markdown(
+            f"⏱️ Play time: {game_info['playingtime']} min | 👥 Players: {game_info['minplayers']}–{game_info['maxplayers']}"
+        )
+
+avg = game_info.get("average", "")
+try:
+    avg_val = round(float(avg), 2)
+    st.markdown(f"📊 BGG Avg Rating: {avg_val}")
+except (ValueError, TypeError):
+    pass
 
 # Init session
 if "ratings" not in st.session_state:
