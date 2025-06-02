@@ -74,8 +74,6 @@ if not game_info.get("name"):
     manual_name = st.text_input("Or enter a game name manually:")
     if manual_name:
         game_info["name"] = manual_name
-    else:
-        game_info["name"] = "Unnamed Game"
 
 is_solo = st.checkbox("Is this a solo-only game?", value=False)
 
@@ -101,11 +99,15 @@ with st.form("rate_game"):
     submitted = st.form_submit_button("🎯 Get Overall Rating")
 
 # Output final rating
-if submitted and game_info.get("name"):
+if submitted:
+    game_name = game_info.get("name", "").strip()
+    if not game_name:
+        game_name = "Unnamed Game"
+
     weighted_total = sum(ratings[cat] * adjusted_weights[cat] for cat in ratings)
     final_score = round_half(weighted_total)
 
-    st.success(f"✅ Overall Rating for **{game_info['name']}**: **{final_score}**")
+    st.success(f"✅ Overall Rating for **{game_name}**: **{final_score}**")
 
     st.markdown("### 🧾 Score Breakdown")
     st.table({
