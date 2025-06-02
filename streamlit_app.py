@@ -1,8 +1,11 @@
 import streamlit as st
 import requests
 import xml.etree.ElementTree as ET
+import json
 
-# ---- Weights (adjusted)
+# ---------------------
+# CONFIG
+# ---------------------
 weights = {
     "artwork": 0.05,
     "gameplay": 0.20,
@@ -22,12 +25,10 @@ weights = {
 def round_half(x):
     return round(x * 2) / 2
 
-# ---- BGG Search
 def search_bgg_games(query):
     url = f"https://boardgamegeek.com/xmlapi2/search?query={query}&type=boardgame"
     response = requests.get(url)
     root = ET.fromstring(response.content)
-
     games = []
     for item in root.findall('item'):
         name = item.find('name').attrib['value']
@@ -35,24 +36,37 @@ def search_bgg_games(query):
         games.append({"name": name, "id": game_id})
     return games
 
-# ---- Fetch Game Details (to get image)
 def get_game_details(game_id):
-    url = f"https://boardgamegeek.com/xmlapi2/thing?id={game_id}"
+    url = f"https://boardgamegeek.com/xmlapi2/thing?id={game_id}&stats=1"
     response = requests.get(url)
     root = ET.fromstring(response.content)
     item = root.find('item')
-
     if item is not None:
-        name = item.find("name").attrib['value']
-        thumbnail = item.find("thumbnail").text if item.find("thumbnail") is not None else None
-        return {"name": name, "thumbnail": thumbnail}
+        details = {
+            "name": item.find("name").attrib['value'],
+            "thumbnail": item.find("thumbnail").text if item.find("thumbnail") is not None else None,
+            "minplayers": item.find("minplayers").attrib['value'],
+            "maxplayers": item.find("maxplayers").attrib['value'],
+            "playingtime": item.find("playingtime").attrib['value'],
+            "average": item.find("statistics/ratings/average").text,
+            "id": game_id
+        }
+        return details
     return {}
 
-# ---- Streamlit UI
-st.title("🎲 Rate a Board Game")
+def generate_review(name, score, ratings):
+    review = f"**{name}**\nRated: {score}/10 🎯\n"
+    for cat, val in ratings.items():
+        review += f"- {cat.replace('_', ' ').title()}: {val}\n"
+    return review
 
-# Search input
-search_query = st.text_input("🔍 Search for a game on BoardGameGeek")
+# ---------------------
+# STREAMLIT UI
+# ---------------------
+st.title("🎲 BGG Game Rating App")
+
+# Search or manual input
+search_query = st.text_input("🔍 Search for a board game on BGG")
 selected_game = None
 game_info = {}
 
@@ -62,48 +76,80 @@ if search_query:
         titles = [f"{g['name']} (ID: {g['id']})" for g in results]
         selection = st.selectbox("Select a game:", titles)
         selected_game = next((g for g in results if f"{g['name']} (ID: {g['id']})" == selection), None)
-
         if selected_game:
             game_info = get_game_details(selected_game['id'])
-    else:
-        st.warning("No games found!")
 
-# Manual fallback
-if not game_info:
-    game_info["name"] = st.text_input("Or enter a game name manually:")
+# Fallback to manual input
+if not game_info.get("name"):
+    game_info["name"] = st.text_input("Or enter the game name manually:")
 
 is_solo = st.checkbox("Is this a solo-only game?", value=False)
 
-# Adjust weights
+# Adjust weights if solo
 adjusted_weights = weights.copy()
 if is_solo:
-    adjusted_weights.pop("interactivity")
+    adjusted_weights.pop("interactivity", None)
 
-# Normalize
+# Normalize weights
 total_weight = sum(adjusted_weights.values())
 adjusted_weights = {k: v / total_weight for k, v in adjusted_weights.items()}
 
-# Show thumbnail
+# Show BGG image/info
 if game_info.get("thumbnail"):
     st.image(game_info["thumbnail"], width=200, caption=game_info["name"])
+if game_info.get("playingtime"):
+    st.markdown(f"⏱️ Play time: {game_info['playingtime']} min | 👥 Players: {game_info['minplayers']}–{game_info['maxplayers']}")
+    st.markdown(f"📊 BGG Avg Rating: {round(float(game_info['average']), 2)}")
 
-# Ratings form
-ratings = {}
+# Init session
+if "ratings" not in st.session_state:
+    st.session_state.ratings = []
+
+# --- Rating Form
 with st.form("rate_game"):
     st.subheader("📋 Rate Each Category (1–10)")
+    ratings = {}
     for cat in adjusted_weights:
         ratings[cat] = st.slider(cat.replace("_", " ").title(), 1.0, 10.0, 7.0, 0.5)
-    submitted = st.form_submit_button("🎯 Get Overall Rating")
+    submitted = st.form_submit_button("✅ Save Rating")
 
-if submitted and game_info.get("name"):
-    weighted_total = sum(ratings[cat] * adjusted_weights[cat] for cat in ratings)
-    final_score = round_half(weighted_total)
+if submitted:
+    score = round_half(sum(ratings[c] * adjusted_weights[c] for c in ratings))
+    st.success(f"✅ Overall Rating: {score}/10 for **{game_info['name']}**")
 
-    st.success(f"✅ Overall Rating for **{game_info['name']}**: **{final_score}**")
+    # Show Review
+    st.markdown("### 📝 Generated Review")
+    review_text = generate_review(game_info["name"], score, ratings)
+    st.code(review_text, language="markdown")
 
-    st.markdown("### 🧾 Score Breakdown")
-    st.table({
-        "Category": [cat.replace("_", " ").title() for cat in ratings],
-        "Rating": [ratings[cat] for cat in ratings],
-        "Weight": [adjusted_weights[cat] for cat in ratings]
+    # Save to session
+    st.session_state.ratings.append({
+        "name": game_info["name"],
+        "score": score,
+        "ratings": ratings
     })
+
+# --- Ratings Table
+if st.session_state.ratings:
+    st.markdown("## 📊 Game Comparison Table")
+    import pandas as pd
+    table_data = []
+    for r in st.session_state.ratings:
+        row = {"Game": r["name"], "Overall": r["score"]}
+        row.update(r["ratings"])
+        table_data.append(row)
+    st.dataframe(pd.DataFrame(table_data).set_index("Game"))
+
+# --- Export JSON
+st.markdown("### 📦 Save or Load Ratings")
+col1, col2 = st.columns(2)
+
+with col1:
+    if st.download_button("💾 Export Ratings as JSON", json.dumps(st.session_state.ratings, indent=2), file_name="ratings.json"):
+        st.success("Ratings exported!")
+
+with col2:
+    uploaded = st.file_uploader("📂 Load Ratings from JSON", type="json")
+    if uploaded:
+        st.session_state.ratings = json.load(uploaded)
+        st.success("Ratings loaded from file!")
