@@ -1,8 +1,8 @@
 import streamlit as st
-import pandas as pd
-import os
+import requests
+import xml.etree.ElementTree as ET
 
-# --- Define Weights ---
+# ---- Weights (adjusted)
 weights = {
     "artwork": 0.05,
     "gameplay": 0.20,
@@ -19,20 +19,62 @@ weights = {
     "storage": 0.05
 }
 
-
-# --- Helper: Round to nearest 0.5 ---
 def round_half(x):
     return round(x * 2) / 2
 
+# ---- BGG Search
+def search_bgg_games(query):
+    url = f"https://boardgamegeek.com/xmlapi2/search?query={query}&type=boardgame"
+    response = requests.get(url)
+    root = ET.fromstring(response.content)
 
-# --- Rating Form ---
-st.title("🎲 Board Game Rating App")
+    games = []
+    for item in root.findall('item'):
+        name = item.find('name').attrib['value']
+        game_id = item.attrib['id']
+        games.append({"name": name, "id": game_id})
+    return games
 
-game_name = st.text_input("Board Game Title")
+# ---- Fetch Game Details (to get image)
+def get_game_details(game_id):
+    url = f"https://boardgamegeek.com/xmlapi2/thing?id={game_id}"
+    response = requests.get(url)
+    root = ET.fromstring(response.content)
+    item = root.find('item')
+
+    if item is not None:
+        name = item.find("name").attrib['value']
+        thumbnail = item.find("thumbnail").text if item.find("thumbnail") is not None else None
+        return {"name": name, "thumbnail": thumbnail}
+    return {}
+
+# ---- Streamlit UI
+st.title("🎲 Rate a Board Game")
+
+# Search input
+search_query = st.text_input("🔍 Search for a game on BoardGameGeek")
+selected_game = None
+game_info = {}
+
+if search_query:
+    results = search_bgg_games(search_query)
+    if results:
+        titles = [f"{g['name']} (ID: {g['id']})" for g in results]
+        selection = st.selectbox("Select a game:", titles)
+        selected_game = next((g for g in results if f"{g['name']} (ID: {g['id']})" == selection), None)
+
+        if selected_game:
+            game_info = get_game_details(selected_game['id'])
+    else:
+        st.warning("No games found!")
+
+# Manual fallback
+if not game_info:
+    game_info["name"] = st.text_input("Or enter a game name manually:")
 
 is_solo = st.checkbox("Is this a solo-only game?", value=False)
 
-# Adjust weights if interactivity should be skipped
+# Adjust weights
 adjusted_weights = weights.copy()
 if is_solo:
     adjusted_weights.pop("interactivity")
@@ -41,37 +83,27 @@ if is_solo:
 total_weight = sum(adjusted_weights.values())
 adjusted_weights = {k: v / total_weight for k, v in adjusted_weights.items()}
 
+# Show thumbnail
+if game_info.get("thumbnail"):
+    st.image(game_info["thumbnail"], width=200, caption=game_info["name"])
+
+# Ratings form
 ratings = {}
 with st.form("rate_game"):
     st.subheader("📋 Rate Each Category (1–10)")
     for cat in adjusted_weights:
         ratings[cat] = st.slider(cat.replace("_", " ").title(), 1.0, 10.0, 7.0, 0.5)
-    submitted = st.form_submit_button("Submit Rating")
+    submitted = st.form_submit_button("🎯 Get Overall Rating")
 
-if submitted:
+if submitted and game_info.get("name"):
     weighted_total = sum(ratings[cat] * adjusted_weights[cat] for cat in ratings)
     final_score = round_half(weighted_total)
 
-    st.success(f"✅ Overall Rating for **{game_name}**: **{final_score}**")
+    st.success(f"✅ Overall Rating for **{game_info['name']}**: **{final_score}**")
 
-    # Show full breakdown
     st.markdown("### 🧾 Score Breakdown")
-    breakdown = pd.DataFrame({
+    st.table({
         "Category": [cat.replace("_", " ").title() for cat in ratings],
         "Rating": [ratings[cat] for cat in ratings],
         "Weight": [adjusted_weights[cat] for cat in ratings]
     })
-    st.dataframe(breakdown)
-
-    # Export to CSV
-    result = {"Game": game_name, **ratings, "Overall": final_score}
-    csv_file = "ratings.csv"
-
-    if os.path.exists(csv_file):
-        df = pd.read_csv(csv_file)
-        df = pd.concat([df, pd.DataFrame([result])], ignore_index=True)
-    else:
-        df = pd.DataFrame([result])
-    
-    df.to_csv(csv_file, index=False)
-    st.success("📁 Rating saved to `ratings.csv`")
