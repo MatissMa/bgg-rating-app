@@ -38,25 +38,28 @@ def search_bgg_games(query):
     return games
 
 def get_game_details(game_id):
-    url = f"https://boardgamegeek.com/xmlapi2/thing?id={game_id}&stats=1"
-    response = requests.get(url)
-    root = ET.fromstring(response.content)
-    item = root.find('item')
-    if item is not None:
-        def get_val(xpath):
-            el = item.find(xpath)
-            return el.text if el is not None else None
+    try:
+        url = f"https://boardgamegeek.com/xmlapi2/thing?id={game_id}&stats=1"
+        response = requests.get(url)
+        root = ET.fromstring(response.content)
+        item = root.find('item')
+        if item is not None:
+            def get_val(xpath):
+                el = item.find(xpath)
+                return el.text if el is not None else None
 
-        details = {
-            "name": item.find("name").attrib.get('value', '') if item.find("name") is not None else '',
-            "thumbnail": get_val("thumbnail"),
-            "minplayers": item.find("minplayers").attrib.get('value', '') if item.find("minplayers") is not None else '',
-            "maxplayers": item.find("maxplayers").attrib.get('value', '') if item.find("maxplayers") is not None else '',
-            "playingtime": get_val("playingtime"),
-            "average": get_val("statistics/ratings/average"),
-            "id": game_id
-        }
-        return details
+            details = {
+                "name": item.find("name").attrib.get('value', '') if item.find("name") is not None else '',
+                "thumbnail": get_val("thumbnail"),
+                "minplayers": item.find("minplayers").attrib.get('value', '') if item.find("minplayers") is not None else '',
+                "maxplayers": item.find("maxplayers").attrib.get('value', '') if item.find("maxplayers") is not None else '',
+                "playingtime": get_val("playingtime"),
+                "average": get_val("statistics/ratings/average"),
+                "id": game_id
+            }
+            return details
+    except Exception as e:
+        st.warning(f"Error fetching BGG data: {e}")
     return {}
 
 def generate_review(name, score, ratings):
@@ -101,14 +104,17 @@ total_weight = sum(adjusted_weights.values())
 adjusted_weights = {k: v / total_weight for k, v in adjusted_weights.items()}
 
 # Show BGG image/info if available
-if "thumbnail" in game_info and game_info["thumbnail"]:
+if game_info.get("thumbnail"):
     st.image(game_info["thumbnail"], width=200, caption=game_info.get("name", "Unknown Game"))
 
-if all(k in game_info for k in ["playingtime", "minplayers", "maxplayers"]):
-    if game_info["playingtime"] and game_info["minplayers"] and game_info["maxplayers"]:
-        st.markdown(
-            f"⏱️ Play time: {game_info['playingtime']} min | 👥 Players: {game_info['minplayers']}–{game_info['maxplayers']}"
-        )
+try:
+    playtime = game_info.get("playingtime", "")
+    minp = game_info.get("minplayers", "")
+    maxp = game_info.get("maxplayers", "")
+    if playtime and minp and maxp:
+        st.markdown(f"⏱️ Play time: {playtime} min | 👥 Players: {minp}–{maxp}")
+except:
+    pass
 
 avg = game_info.get("average", "")
 try:
