@@ -2,9 +2,10 @@ import streamlit as st
 import requests
 import xml.etree.ElementTree as ET
 import json
+import pandas as pd
 
 # ---------------------
-# CONFIG
+# CONFIG: Weights
 # ---------------------
 weights = {
     "artwork": 0.05,
@@ -63,6 +64,7 @@ def generate_review(name, score, ratings):
 # ---------------------
 # STREAMLIT UI
 # ---------------------
+st.set_page_config(page_title="BGG Game Rater", page_icon="🎲")
 st.title("🎲 BGG Game Rating App")
 
 # Search or manual input
@@ -99,7 +101,9 @@ if game_info.get("thumbnail"):
     st.image(game_info["thumbnail"], width=200, caption=game_info["name"])
 if game_info.get("playingtime"):
     st.markdown(f"⏱️ Play time: {game_info['playingtime']} min | 👥 Players: {game_info['minplayers']}–{game_info['maxplayers']}")
-    st.markdown(f"📊 BGG Avg Rating: {round(float(game_info['average']), 2)}")
+avg = game_info.get("average")
+if avg and avg.replace('.', '', 1).isdigit():
+    st.markdown(f"📊 BGG Avg Rating: {round(float(avg), 2)}")
 
 # Init session
 if "ratings" not in st.session_state:
@@ -132,7 +136,6 @@ if submitted:
 # --- Ratings Table
 if st.session_state.ratings:
     st.markdown("## 📊 Game Comparison Table")
-    import pandas as pd
     table_data = []
     for r in st.session_state.ratings:
         row = {"Game": r["name"], "Overall": r["score"]}
@@ -140,7 +143,7 @@ if st.session_state.ratings:
         table_data.append(row)
     st.dataframe(pd.DataFrame(table_data).set_index("Game"))
 
-# --- Export JSON
+# --- Export/Import JSON
 st.markdown("### 📦 Save or Load Ratings")
 col1, col2 = st.columns(2)
 
