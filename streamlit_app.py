@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import xml.etree.ElementTree as ET
 
-# ---- Weights (adjusted)
+# ---- Weights (can be adjusted)
 weights = {
     "artwork": 0.05,
     "gameplay": 0.20,
@@ -22,7 +22,7 @@ weights = {
 def round_half(x):
     return round(x * 2) / 2
 
-# ---- BGG Search
+# ---- BGG Game Search Function
 def search_bgg_games(query):
     url = f"https://boardgamegeek.com/xmlapi2/search?query={query}&type=boardgame"
     response = requests.get(url)
@@ -32,62 +32,39 @@ def search_bgg_games(query):
     for item in root.findall('item'):
         name = item.find('name').attrib['value']
         game_id = item.attrib['id']
-        games.append({"name": name, "id": game_id})
+        games.append(f"{name} (ID: {game_id})")
     return games
-
-# ---- Fetch Game Details (to get image)
-def get_game_details(game_id):
-    url = f"https://boardgamegeek.com/xmlapi2/thing?id={game_id}"
-    response = requests.get(url)
-    root = ET.fromstring(response.content)
-    item = root.find('item')
-
-    if item is not None:
-        name = item.find("name").attrib['value']
-        thumbnail = item.find("thumbnail").text if item.find("thumbnail") is not None else None
-        return {"name": name, "thumbnail": thumbnail}
-    return {}
 
 # ---- Streamlit UI
 st.title("🎲 Rate a Board Game")
 
-# Search input
+# Search box for BGG integration
 search_query = st.text_input("🔍 Search for a game on BoardGameGeek")
-selected_game = None
-game_info = {}
+game_name = None
 
 if search_query:
     results = search_bgg_games(search_query)
     if results:
-        titles = [f"{g['name']} (ID: {g['id']})" for g in results]
-        selection = st.selectbox("Select a game:", titles)
-        selected_game = next((g for g in results if f"{g['name']} (ID: {g['id']})" == selection), None)
-
-        if selected_game:
-            game_info = get_game_details(selected_game['id'])
+        selected = st.selectbox("Select a game:", results)
+        game_name = selected.split(" (ID")[0]
     else:
         st.warning("No games found!")
 
-# Manual fallback
-if not game_info:
-    game_info["name"] = st.text_input("Or enter a game name manually:")
+# Fallback if not using search
+if not game_name:
+    game_name = st.text_input("Or enter a game name manually:")
 
 is_solo = st.checkbox("Is this a solo-only game?", value=False)
 
-# Adjust weights
+# Adjust interactivity if solo
 adjusted_weights = weights.copy()
 if is_solo:
     adjusted_weights.pop("interactivity")
 
-# Normalize
+# Normalize weights
 total_weight = sum(adjusted_weights.values())
 adjusted_weights = {k: v / total_weight for k, v in adjusted_weights.items()}
 
-# Show thumbnail
-if game_info.get("thumbnail"):
-    st.image(game_info["thumbnail"], width=200, caption=game_info["name"])
-
-# Ratings form
 ratings = {}
 with st.form("rate_game"):
     st.subheader("📋 Rate Each Category (1–10)")
@@ -95,11 +72,11 @@ with st.form("rate_game"):
         ratings[cat] = st.slider(cat.replace("_", " ").title(), 1.0, 10.0, 7.0, 0.5)
     submitted = st.form_submit_button("🎯 Get Overall Rating")
 
-if submitted and game_info.get("name"):
+if submitted and game_name:
     weighted_total = sum(ratings[cat] * adjusted_weights[cat] for cat in ratings)
     final_score = round_half(weighted_total)
 
-    st.success(f"✅ Overall Rating for **{game_info['name']}**: **{final_score}**")
+    st.success(f"✅ Overall Rating for **{game_name}**: **{final_score}**")
 
     st.markdown("### 🧾 Score Breakdown")
     st.table({
