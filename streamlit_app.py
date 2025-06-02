@@ -99,8 +99,11 @@ adjusted_weights = weights.copy()
 if is_solo:
     adjusted_weights.pop("interactivity", None)
 
-# Normalize weights
+# Normalize weights safely
 total_weight = sum(adjusted_weights.values())
+if total_weight == 0:
+    st.error("No categories left to rate! Please check weights or solo game settings.")
+    st.stop()
 adjusted_weights = {k: v / total_weight for k, v in adjusted_weights.items()}
 
 # Show BGG image/info if available
