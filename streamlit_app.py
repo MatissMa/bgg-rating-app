@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import xml.etree.ElementTree as ET
 
-# ---- Weights (adjusted and normalized)
+# ---- Weights (adjusted)
 weights = {
     "artwork": 0.05,
     "gameplay": 0.20,
@@ -69,26 +69,25 @@ if search_query:
         st.warning("No games found!")
 
 # Manual fallback
-if not game_info.get("name"):
+if not game_info:
     game_info["name"] = st.text_input("Or enter a game name manually:")
 
-# Solo game checkbox
 is_solo = st.checkbox("Is this a solo-only game?", value=False)
 
-# Adjust weights if solo
+# Adjust weights
 adjusted_weights = weights.copy()
 if is_solo:
-    adjusted_weights.pop("interactivity", None)
+    adjusted_weights.pop("interactivity")
 
-# Normalize weights
+# Normalize
 total_weight = sum(adjusted_weights.values())
 adjusted_weights = {k: v / total_weight for k, v in adjusted_weights.items()}
 
-# Show image if available
+# Show thumbnail
 if game_info.get("thumbnail"):
     st.image(game_info["thumbnail"], width=200, caption=game_info["name"])
 
-# Rating form
+# Ratings form
 ratings = {}
 with st.form("rate_game"):
     st.subheader("📋 Rate Each Category (1–10)")
@@ -96,20 +95,15 @@ with st.form("rate_game"):
         ratings[cat] = st.slider(cat.replace("_", " ").title(), 1.0, 10.0, 7.0, 0.5)
     submitted = st.form_submit_button("🎯 Get Overall Rating")
 
-# Display result
-if submitted:
-    game_name = game_info.get("name", "").strip()
-    if not game_name:
-        game_name = "Unnamed Game"
-
+if submitted and game_info.get("name"):
     weighted_total = sum(ratings[cat] * adjusted_weights[cat] for cat in ratings)
     final_score = round_half(weighted_total)
 
-    st.success(f"✅ Overall Rating for **{game_name}**: **{final_score}**")
+    st.success(f"✅ Overall Rating for **{game_info['name']}**: **{final_score}**")
 
     st.markdown("### 🧾 Score Breakdown")
     st.table({
         "Category": [cat.replace("_", " ").title() for cat in ratings],
         "Rating": [ratings[cat] for cat in ratings],
-        "Weight": [round(adjusted_weights[cat], 3) for cat in ratings]
+        "Weight": [adjusted_weights[cat] for cat in ratings]
     })
